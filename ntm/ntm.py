@@ -155,7 +155,7 @@ class NTM(object):
         adds[t] = np.tanh(np.dot(W['oadds'], os[t]) + W['badds'])
         erases[t] = sigmoid(np.dot(W['oerases'], os[t]) + W['berases'])
 
-        w_ws[t] = addressing.create_weights(   k_ws[t]
+        w_ws[t] = addressing.simple_create_weights(   k_ws[t]
                                                 , beta_ws[t]
                                                 , g_ws[t]
                                                 , s_ws[t]
@@ -163,7 +163,7 @@ class NTM(object):
                                                 , w_ws[t-1]
                                                 , mems[t-1])
 
-        w_rs[t] = addressing.create_weights(   k_rs[t]
+        w_rs[t] = addressing.simple_create_weights(   k_rs[t]
                                                 , beta_rs[t]
                                                 , g_rs[t]
                                                 , s_rs[t]
