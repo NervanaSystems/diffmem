@@ -62,7 +62,8 @@ def simple_content_focus(k_t, b_t, mem):
         Given the key vector k_t, compute our sim
         function between k_t and u and exponentiate.
         """
-        return np.exp(b_t * cosine_sim(u, k_t))
+        c_t = np.array([[1.0]])
+        return np.exp(c_t * cosine_sim(u, k_t))
 
     # Apply above function to every row in the matrix
     # This is surely much slower than it needs to be
