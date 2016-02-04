@@ -188,7 +188,8 @@ class NTM(object):
         # write into the memory
         mems[t] = memory.write(mems[t-1],w_ws[t],erases[t],adds[t])
 
-      self.stats = [loss, mems, ps, ys, os, zos, hs, zhs, xs, rs, w_rs, w_ws, adds, erases]
+      self.stats = [loss, mems, ps, ys, os, zos, hs, zhs, xs,
+                    rs, w_rs, w_ws, adds, erases, k_ws, k_rs]
       return np.sum(loss)
 
     def manual_grads(params):
@@ -200,7 +201,8 @@ class NTM(object):
       for key, val in params.iteritems():
         deltas[key] = np.zeros_like(val)
 
-      loss, mems, ps, ys, os, zos, hs, zhs, xs, rs, w_rs, w_ws, adds, erases = self.stats
+      loss, mems, ps, ys, os, zos, hs, zhs, xs,
+      rs, w_rs, w_ws, adds, erases, k_ws, k_rs = self.stats
       dd = {}
       drs = {}
       dzh = {}
@@ -251,6 +253,17 @@ class NTM(object):
 
           deltas['oerases'] += np.dot(dzerase, os[t].T)
 
+          dk_w =
+          dk_r = 
+
+          dzk_w = dk_w * (1 - k_ws[t] * k_ws[t])
+          dzk_r = dk_r * (1 - k_rs[t] * k_rs[t])
+
+          deltas['bk_w'] += dzk_w
+          deltas['bk_r'] += dzk_r
+          deltas['ok_w'] += np.dot(dzk_w, os[t].T)
+          deltas['ok_r'] += np.dot(dzk_r, os[t].T)
+
         else:
           drs[t] = np.zeros_like(rs[0])
           dmemtilde[t] = np.zeros_like(mems[0])
@@ -279,6 +292,7 @@ class NTM(object):
 
         # Wrh affects zh via rs[t-1]
         deltas['rh'] += np.dot(dzh[t], rs[t-1].reshape((self.M, 1)).T)
+
 
       return deltas
 
