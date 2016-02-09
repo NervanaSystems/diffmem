@@ -110,17 +110,18 @@ def location_focus(g_t, s_t, gamma_t, w_old, w_content):
     # w_tp = shift(w_gt, s_t)
 
     # Take every element of the weight vector to the gamma_t-th power.
-    # pows = w_tp ** gamma_t
+    # TODO: change back to w_tp
+    pows = w_gt ** gamma_t
 
     # Normalize that vector by its sum.
-    # w_t = pows / np.sum(pows)
+    w_t = pows / np.sum(pows)
 
-    # return w_t
-    return w_gt
+    return w_t, w_gt
 
 def create_weights(k_t, b_t, g_t, s_t, gamma_t, w_old, mem):
     """
     Convenience function to be called from NTM fprop.
     """
     w_content = content_focus(k_t, b_t, mem)
-    return location_focus(g_t, s_t, gamma_t, w_old, w_content), w_content
+    w_t, w_gt = location_focus(g_t, s_t, gamma_t, w_old, w_content)
+    return w_t, w_content, w_gt

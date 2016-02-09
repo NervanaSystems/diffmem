@@ -4,7 +4,7 @@ This module implements a neural turing machine.
 import math
 import autograd.numpy as np
 from autograd import grad
-from util.util import rando, sigmoid, softmax, softplus, unwrap, sigmoid_prime, tanh_prime, compare_deltas, dKdu, softmax_grads
+from util.util import rando, sigmoid, softmax, softplus, unwrap, sigmoid_prime, tanh_prime, compare_deltas, dKdu, softmax_grads, sharpener_grads
 import memory
 import addressing
 from addressing import cosine_sim
@@ -113,6 +113,7 @@ class NTM(object):
       adds, erases = l(),l()
       w_ws, w_rs = l(),l() # read weights and write weights
       wc_ws, wc_rs = l(),l() # read and write content weights
+      wg_ws, wg_rs = l(),l() # intermediate post-interpolation weights
       rs[-1] = self.W['rsInit'] # stores values read from memory
       w_ws[-1] = softmax(self.W['w_wsInit'])
       w_rs[-1] = softmax(self.W['w_rsInit'])
@@ -157,7 +158,7 @@ class NTM(object):
         adds[t] = np.tanh(np.dot(W['oadds'], os[t]) + W['badds'])
         erases[t] = sigmoid(np.dot(W['oerases'], os[t]) + W['berases'])
 
-        w_ws[t], wc_ws[t] = addressing.create_weights(   k_ws[t]
+        w_ws[t], wc_ws[t], wg_ws[t] = addressing.create_weights(   k_ws[t]
                                                 , beta_ws[t]
                                                 , g_ws[t]
                                                 , s_ws[t]
@@ -165,7 +166,7 @@ class NTM(object):
                                                 , w_ws[t-1]
                                                 , mems[t-1])
 
-        w_rs[t], wc_rs[t] = addressing.create_weights(   k_rs[t]
+        w_rs[t], wc_rs[t], wg_rs[t] = addressing.create_weights(   k_rs[t]
                                                 , beta_rs[t]
                                                 , g_rs[t]
                                                 , s_rs[t]
@@ -191,7 +192,8 @@ class NTM(object):
         mems[t] = memory.write(mems[t-1],w_ws[t],erases[t],adds[t])
 
       self.stats = [loss, mems, ps, ys, os, zos, hs, zhs, xs, rs, w_rs,
-                    w_ws, adds, erases, k_rs, k_ws, g_rs, g_ws, wc_rs, wc_ws]
+                    w_ws, adds, erases, k_rs, k_ws, g_rs, g_ws, wc_rs, wc_ws,
+                    gamma_rs, gamma_ws, wg_rs, wg_ws]
       return np.sum(loss)
 
     def manual_grads(params):
@@ -204,7 +206,8 @@ class NTM(object):
         deltas[key] = np.zeros_like(val)
 
       [loss, mems, ps, ys, os, zos, hs, zhs, xs, rs, w_rs,
-       w_ws, adds, erases, k_rs, k_ws, g_rs, g_ws, wc_rs, wc_ws] = self.stats
+       w_ws, adds, erases, k_rs, k_ws, g_rs, g_ws, wc_rs, wc_ws,
+       gamma_rs, gamma_ws, wg_rs, wg_ws] = self.stats
       dd = {}
       drs = {}
       dzh = {}
@@ -260,14 +263,6 @@ class NTM(object):
 
           deltas['oerases'] += np.dot(dzerase, os[t].T)
 
-          # # read weights affect what is read, via what's in mems[t-1]
-          # dwc_r = np.dot(mems[t-1], drs[t])
-
-          # # write weights affect mem[t] through adding
-          # dwc_w = np.dot(dmem[t], adds[t])
-          # # they also affect memtilde[t] through erasing
-          # dwc_w += np.dot(np.multiply(dmemtilde[t], -mems[t-1]), erases[t])
-
           dw_r = np.dot(mems[t-1], drs[t])
           dw_r += dwg_r[t+1] * (1 - g_rs[t+1])
 
@@ -277,10 +272,28 @@ class NTM(object):
           dw_w += np.dot(np.multiply(dmemtilde[t], -mems[t-1]), erases[t])
           dw_w += dwg_w[t+1] * (1 - g_ws[t+1])
 
-          dwg_r[t] = dw_r
-          dwg_w[t] = dw_w
+          # compute grads for pre-sharpening memory weighting
+          # elt i,j of the below is grad of final w[j] w.r.t. intermediate w[i]
+          dwdwg_r = np.zeros((self.N, self.N))
+          dwdwg_w = np.zeros((self.N, self.N))
+          # compute grads of pre-sharpen w.r.t. post sharpen
+          # for every elt of the g weighting
+          for i in range(self.N):
+            #for every elt of the final weighting
+            for j in range(self.N):
+              dwdwg_r[i,j] += sharpener_grads(wg_rs[t], gamma_rs[t], i, j)
+              dwdwg_w[i,j] += sharpener_grads(wg_ws[t], gamma_ws[t], i, j)
 
-          # import pdb; pdb.set_trace()
+          dwg_r[t] = np.zeros_like(wg_rs[0])
+          dwg_w[t] = np.zeros_like(wg_ws[0])
+          # compute deltas for the pre-sharpening weighting
+          for i in range(self.N):
+            #for every elt of the final weighting
+            for j in range(self.N):
+              dwg_r[t][i] += dw_r[j] * dwdwg_r[i,j]
+              dwg_w[t][i] += dw_w[j] * dwdwg_w[i,j]
+
+
           dwc_r = dwg_r[t] * g_rs[t]
           dwc_w = dwg_w[t] * g_ws[t]
 
@@ -397,6 +410,35 @@ class NTM(object):
           deltas['bg_r'] += dzg_r
           deltas['bg_w'] += dzg_w
 
+          # compute grads of individual weights w.r.t. gamma
+          pows_r = wg_rs[t] ** gamma_rs[t]
+          den_r = np.sum(pows_r)
+          logs_r = np.log(wg_rs[t])
+          a_r= np.multiply(pows_r, logs_r) / den_r
+          b_r= np.multiply(pows_r,np.sum(np.multiply(pows_r, logs_r))) / den_r*den_r
+          dwdgamma_r = a_r - b_r
+
+          pows_w = wg_ws[t] ** gamma_ws[t]
+          den_w = np.sum(pows_w)
+          logs_w = np.log(wg_ws[t])
+          a_w= np.multiply(pows_w, logs_w) / den_w
+          b_w= np.multiply(pows_w,np.sum(np.multiply(pows_w, logs_w))) / den_w*den_w
+          dwdgamma_w = a_w - b_w
+
+          dgamma_r = np.dot(dw_r.T, dwdgamma_r)
+          dgamma_w = np.dot(dw_w.T, dwdgamma_w)
+
+          # compute dzgamma
+          # gamma is activated as 1 + sigmoid(zgamma)
+          dzgamma_r = dgamma_r * (gamma_rs[t] * (1 - gamma_rs[t]))
+          dzgamma_w = dgamma_w * (gamma_ws[t] * (1 - gamma_ws[t]))
+
+          deltas['ogamma_r'] += np.dot(dzgamma_r, os[t].T)
+          deltas['ogamma_w'] += np.dot(dzgamma_w, os[t].T)
+
+          deltas['bgamma_r'] += dzgamma_r
+          deltas['bgamma_w'] += dzgamma_w
+
         else:
           drs[t] = np.zeros_like(rs[0])
           dmemtilde[t] = np.zeros_like(mems[0])
@@ -417,6 +459,9 @@ class NTM(object):
           # and also through the interpolators
           do += np.dot(params['og_r'].T, dzg_r)
           do += np.dot(params['og_w'].T, dzg_w)
+          # and also through the gamma values
+          do += np.dot(params['ogamma_r'].T, dzgamma_r)
+          do += np.dot(params['ogamma_w'].T, dzgamma_w)
 
 
         # compute deriv w.r.t. pre-activation of o
@@ -479,6 +524,7 @@ class NTM(object):
 
     deltas = bprop(self.W, manual_grad)
     [loss, mems, ps, ys, os, zos, hs, zhs, xs, rs, w_rs,
-     w_ws, adds, erases, k_rs, k_ws, g_rs, g_ws, wc_rs, wc_ws] = map(unwrap, self.stats)
+     w_ws, adds, erases, k_rs, k_ws, g_rs, g_ws, wc_rs, wc_ws,
+     gamma_rs, gamma_ws, wg_rs, wg_ws] = map(unwrap, self.stats)
 
     return loss, deltas, ps, w_rs, w_ws, adds, erases

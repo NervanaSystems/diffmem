@@ -245,3 +245,14 @@ def softmax_grads(Ks, i, j):
   den1 = np.sum(np.exp(Ks))
   return num / (den1 * den1)
 
+def sharpener_grads(w_pre, gamma, i, j):
+  """
+  return the grad of i-th element of post-sharpening weights w.r.t. j-th element
+  of pre-sharpening weights
+  """
+  if j == i:
+    num = gamma*(w_pre[i]**(gamma - 1)) * (np.sum(w_pre ** gamma) - w_pre[i] ** gamma)
+  else:
+    num = - gamma * (w_pre[j] ** gamma) * (w_pre[i]) ** (gamma - 1)
+  den1 = np.sum(w_pre ** gamma)
+  return num / (den1 * den1)
