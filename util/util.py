@@ -256,3 +256,18 @@ def sharpener_grads(w_pre, gamma, i, j):
     num = - gamma * (w_pre[j] ** gamma) * (w_pre[i]) ** (gamma - 1)
   den1 = np.sum(w_pre ** gamma)
   return num / (den1 * den1)
+
+def gamma_grads(w_pre, gamma, i):
+  """
+  return grad of post-sharpening weight[i] w.r.t. gamma (the sharpener value)
+  """
+  anum = w_pre[i]**gamma * np.log(w_pre[i])
+  aden = np.sum(w_pre ** gamma)
+  a = anum / aden
+
+  bnum = w_pre[i]**gamma * np.sum(  np.multiply(w_pre**gamma, np.log(w_pre))  )
+  bden = aden * aden
+  b = bnum / bden
+
+  return a - b
+

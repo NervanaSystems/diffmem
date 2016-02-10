@@ -3,8 +3,8 @@ This module implements a neural turing machine.
 """
 import math
 import autograd.numpy as np
-from autograd import grad
-from util.util import rando, sigmoid, softmax, softplus, unwrap, sigmoid_prime, tanh_prime, compare_deltas, dKdu, softmax_grads, sharpener_grads
+from autograd import grad, jacobian
+from util.util import rando, sigmoid, softmax, softplus, unwrap, sigmoid_prime, tanh_prime, compare_deltas, dKdu, softmax_grads, sharpener_grads, gamma_grads
 import memory
 import addressing
 from addressing import cosine_sim
@@ -272,6 +272,10 @@ class NTM(object):
           dw_w += np.dot(np.multiply(dmemtilde[t], -mems[t-1]), erases[t])
           dw_w += dwg_w[t+1] * (1 - g_ws[t+1])
 
+          def sharpen(w_pre, gamma):
+            pows = w_pre ** gamma
+            return pows / np.sum(pows)
+
           # compute grads for pre-sharpening memory weighting
           # elt i,j of the below is grad of final w[j] w.r.t. intermediate w[i]
           dwdwg_r = np.zeros((self.N, self.N))
@@ -284,6 +288,11 @@ class NTM(object):
               dwdwg_r[i,j] += sharpener_grads(wg_rs[t], gamma_rs[t], i, j)
               dwdwg_w[i,j] += sharpener_grads(wg_ws[t], gamma_ws[t], i, j)
 
+          # TODO: this shows we have jacobian right, though maybe transposed
+          sharp_grad_big = jacobian(sharpen, argnum=0)
+          true_grad_r = np.reshape(sharp_grad_big(wg_rs[t], gamma_rs[t]), (15,15))
+          true_grad_w = np.reshape(sharp_grad_big(wg_ws[t], gamma_ws[t]), (15,15))
+
           dwg_r[t] = np.zeros_like(wg_rs[0])
           dwg_w[t] = np.zeros_like(wg_ws[0])
           # compute deltas for the pre-sharpening weighting
@@ -292,6 +301,8 @@ class NTM(object):
             for j in range(self.N):
               dwg_r[t][i] += dw_r[j] * dwdwg_r[i,j]
               dwg_w[t][i] += dw_w[j] * dwdwg_w[i,j]
+              # dwg_r[t][i] += dw_r[j] * true_grad_r[i,j]
+              # dwg_w[t][i] += dw_w[j] * true_grad_w[i,j]
 
 
           dwc_r = dwg_r[t] * g_rs[t]
@@ -410,20 +421,18 @@ class NTM(object):
           deltas['bg_r'] += dzg_r
           deltas['bg_w'] += dzg_w
 
-          # compute grads of individual weights w.r.t. gamma
-          pows_r = wg_rs[t] ** gamma_rs[t]
-          den_r = np.sum(pows_r)
-          logs_r = np.log(wg_rs[t])
-          a_r= np.multiply(pows_r, logs_r) / den_r
-          b_r= np.multiply(pows_r,np.sum(np.multiply(pows_r, logs_r))) / den_r*den_r
-          dwdgamma_r = a_r - b_r
 
-          pows_w = wg_ws[t] ** gamma_ws[t]
-          den_w = np.sum(pows_w)
-          logs_w = np.log(wg_ws[t])
-          a_w= np.multiply(pows_w, logs_w) / den_w
-          b_w= np.multiply(pows_w,np.sum(np.multiply(pows_w, logs_w))) / den_w*den_w
-          dwdgamma_w = a_w - b_w
+          sharp_grad = jacobian(sharpen, argnum=1)
+
+          dwdgamma_r = np.zeros((self.N, 1))
+          for i in range(self.N):
+            dwdgamma_r[i] = gamma_grads(wg_rs[t], gamma_rs[t], i)
+          # TODO: looks like this is correct as well, just need to get rest working
+          true_grads = np.reshape(sharp_grad(wg_rs[t], gamma_rs[t]), (15,1))
+
+          dwdgamma_w = np.zeros((self.N, 1))
+          for i in range(self.N):
+            dwdgamma_w[i] = gamma_grads(wg_ws[t], gamma_ws[t], i)
 
           dgamma_r = np.dot(dw_r.T, dwdgamma_r)
           dgamma_w = np.dot(dw_w.T, dwdgamma_w)
