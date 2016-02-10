@@ -114,6 +114,7 @@ class NTM(object):
       w_ws, w_rs = l(),l() # read weights and write weights
       wc_ws, wc_rs = l(),l() # read and write content weights
       wg_ws, wg_rs = l(),l() # intermediate post-interpolation weights
+      # TODO: does this -1 indexing prevent autograd from getting init grads?
       rs[-1] = self.W['rsInit'] # stores values read from memory
       w_ws[-1] = softmax(self.W['w_wsInit'])
       w_rs[-1] = softmax(self.W['w_rsInit'])
