@@ -435,8 +435,8 @@ class NTM(object):
             dwdgamma_w[i] = gamma_grads(wg_ws[t], gamma_ws[t], i)
 
           true_grads_w = np.reshape(sharp_grad(wg_ws[t], gamma_ws[t]), (self.N,1))
-          # import pdb; pdb.set_trace()
 
+          # this is the only way to express this part
           dgamma_r = np.dot(dw_r.T, dwdgamma_r)
           dgamma_w = np.dot(dw_w.T, dwdgamma_w)
 

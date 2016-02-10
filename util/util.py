@@ -227,7 +227,7 @@ def dKdu(u, v):
   """
   anorm = np.sqrt(np.sum(u*u))
   bnorm = np.sqrt(np.sum(v*v))
-  den2 = (anorm * bnorm) + 1e-20 
+  den2 = (anorm * bnorm) + 1e-20
 
   a = v / den2
   b = u / np.sum(np.square(u))
