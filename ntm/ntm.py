@@ -304,10 +304,8 @@ class NTM(object):
               # dwg_r[t][i] += dw_r[j] * true_grad_r[i,j]
               # dwg_w[t][i] += dw_w[j] * true_grad_w[i,j]
 
-
           dwc_r = dwg_r[t] * g_rs[t]
           dwc_w = dwg_w[t] * g_ws[t]
-
 
           """
           We need dw/dK
@@ -427,12 +425,16 @@ class NTM(object):
           dwdgamma_r = np.zeros((self.N, 1))
           for i in range(self.N):
             dwdgamma_r[i] = gamma_grads(wg_rs[t], gamma_rs[t], i)
+
           # TODO: looks like this is correct as well, just need to get rest working
-          true_grads = np.reshape(sharp_grad(wg_rs[t], gamma_rs[t]), (15,1))
+          true_grads_r = np.reshape(sharp_grad(wg_rs[t], gamma_rs[t]), (self.N,1))
 
           dwdgamma_w = np.zeros((self.N, 1))
           for i in range(self.N):
             dwdgamma_w[i] = gamma_grads(wg_ws[t], gamma_ws[t], i)
+
+          true_grads_w = np.reshape(sharp_grad(wg_ws[t], gamma_ws[t]), (self.N,1))
+          # import pdb; pdb.set_trace()
 
           dgamma_r = np.dot(dw_r.T, dwdgamma_r)
           dgamma_w = np.dot(dw_w.T, dwdgamma_w)
